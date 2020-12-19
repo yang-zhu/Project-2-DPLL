@@ -166,7 +166,7 @@ void backtrack() {
             return;
         }
     }
-    cout << "Unsatisfiable";
+    cout << "s Unsatisfiable\n";
     exit(0);
 }
 
@@ -183,7 +183,12 @@ int main(int argc, const char *argv[]) {
             }
         }
         if (variables.size()-1 == assignments.size()) {
-            cout << "Satisfiable";
+            cout << "s Satisfiable\n";
+            cout << "v ";
+            for (int i = 1; i < variables.size(); ++i) {
+                cout << ((variables[i].value == Value::t) ? i : -i) << " "; 
+            }
+            cout << "0\n";
             return 0;
         }
     }
