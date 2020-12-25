@@ -9,7 +9,7 @@ To test `dpll_solver`:
 ```
 ./dpll_solver <path to a cnf file> [heuristics]
 ```
-The heutistics options are: -dlis, -dlcs
+The heutistics options are: -slis, -slcs, -dlis, -dlcs
 
 To test `dpll_solver.py`:
 ```
