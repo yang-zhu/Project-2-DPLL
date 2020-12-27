@@ -34,22 +34,27 @@ struct Variable {
     Value value = Value::unset;
     vector<Clause*> pos_occ;
     vector<Clause*> neg_occ;
-    int pos_lit_occ = 0;
-    int neg_lit_occ = 0;
-    int pos_in_heap = 0;
+    int pos_lit_occ = 0;  // Keep track of the occurrence of a positive literal in active clauses.
+    int neg_lit_occ = 0;  // Keep track of the occurrence of a negative literal in active clauses.
+    int pos_in_heap = 0;  // A variable's position in the heap, which is used to update the heap.
     void set(Value, Mark);
     void unset();
 };
 
+enum class Heuristic {
+    none, slis, slcs, dlis, dlcs//, mom, boehm, jw
+};
+
 bool greater_than(Variable*, Variable*);
 
-struct Heap {
+struct Heap {  // a max-heap
     vector<Variable*> heap{nullptr};
 
-    static int parent_ind(int ind) { return ind/2; }
-    static int l_child_ind(int ind) { return ind*2; }
-    static int r_child_ind(int ind) { return ind*2+1; }
-    int max_child_ind(int i) const {
+    static int parent_ind(int ind) { return ind/2; }  // Return the index of the parent node of a node.
+    static int l_child_ind(int ind) { return ind*2; }  // Return the index of the left child of a node.
+    static int r_child_ind(int ind) { return ind*2+1; }  // Return the index of the right child of a node.
+    // Return the index of the child with the maximum priority. When there is no child, return the index of the node.
+    int max_child_ind(int i) const { 
         if (i*2+1 < heap.size()) { return greater_than(heap[i*2], heap[i*2+1]) ? i*2 : i*2+1; } 
         else if (i*2 < heap.size()) { return i*2; }
         else { return i; }
