@@ -6,6 +6,7 @@ vector<pair<Variable*, Mark>> assignments;
 vector<Clause*> unit_clauses;
 Heap unassigned_vars;
 Heuristic heu = Heuristic::none;  // The default setting is without any heuristics.
+bool verbose = false;
 
 // Append a variable to the heap and re-sort the heap.
 void Heap::insert(Variable* var) {
@@ -52,6 +53,23 @@ void Heap::move_down(Variable* var) {
     heap[var_ind]->pos_in_heap = var_ind;
 }
 
+int get_or_default(const map<int,int>& m, int l) {
+    auto search = m.find(l);
+    if (search != m.end()) { return search->second; }
+    return 0;
+}
+
+double mom_helper(Variable* v, int len, int alpha) {
+    int pos_cl_count = get_or_default(v->pos_by_cl_len, len);
+    int neg_cl_count = get_or_default(v->neg_by_cl_len, len);
+    return (pos_cl_count + neg_cl_count) * pow(2, alpha) + pos_cl_count * neg_cl_count;
+}
+
+map<int,int>::iterator it_incr(const map<int,int>& m, map<int,int>::iterator it, int l) {
+    if (it != m.end() && it->first == l) { return ++it; }
+    return it;
+}
+
 // Different ways to compare priorities of literals/variables.
 bool greater_than(Variable* v1, Variable* v2) {
     switch(heu) {
@@ -70,6 +88,66 @@ bool greater_than(Variable* v1, Variable* v2) {
         case Heuristic::dlcs:
             // Compare variables according to their number of occurrences in active clauses.
             return v1->pos_lit_occ + v1->neg_lit_occ > v2->pos_lit_occ + v2->neg_lit_occ;
+        case Heuristic::set_count:
+            return v1->priority > v2->priority;
+        case Heuristic::mom: {
+            const int alpha = 50;
+            int cl_len = numeric_limits<int>::max();
+            if (v1->pos_by_cl_len.begin() != v1->pos_by_cl_len.end()) {
+                cl_len = v1->pos_by_cl_len.begin()->first;
+            }
+            if (v1->neg_by_cl_len.begin() != v1->neg_by_cl_len.end()) {
+                cl_len = min(cl_len, v1->neg_by_cl_len.begin()->first);
+            }
+            if (v2->pos_by_cl_len.begin() != v2->pos_by_cl_len.end()) {
+                cl_len = min(cl_len, v2->pos_by_cl_len.begin()->first);
+            }
+            if (v2->neg_by_cl_len.begin() != v2->neg_by_cl_len.end()) {
+                cl_len = min(cl_len, v2->neg_by_cl_len.begin()->first);
+            }
+            double v1_heu = mom_helper(v1, cl_len, alpha);
+            double v2_heu = mom_helper(v2, cl_len, alpha);
+            return v1_heu > v2_heu;
+        }
+        case Heuristic::boehm: {
+            const double alpha = 100;
+            const double beta = 50;
+            auto v1_pos = v1->pos_by_cl_len.begin();
+            auto v1_neg = v1->neg_by_cl_len.begin();
+            auto v2_pos = v2->pos_by_cl_len.begin();
+            auto v2_neg = v2->neg_by_cl_len.begin();
+            while (true) {
+                int cl_len = numeric_limits<int>::max();
+                if (v1_pos != v1->pos_by_cl_len.end()) {
+                    cl_len = v1_pos->first;
+                }
+                if (v1_neg != v1->neg_by_cl_len.end()) {
+                    cl_len = min(cl_len, v1_neg->first);
+                }
+                if (v2_pos != v2->pos_by_cl_len.end()) {
+                    cl_len = min(cl_len, v2_pos->first);
+                }
+                if (v2_neg != v2->neg_by_cl_len.end()) {
+                    cl_len = min(cl_len, v2_neg->first);
+                }
+                if (cl_len == numeric_limits<int>::max()) { return false; }
+                int v1_pos_count = get_or_default(v1->pos_by_cl_len, cl_len);
+                int v1_neg_count = get_or_default(v1->neg_by_cl_len, cl_len);
+                int v2_pos_count = get_or_default(v2->pos_by_cl_len, cl_len);
+                int v2_neg_count = get_or_default(v2->neg_by_cl_len, cl_len);
+                int v1_max = max(v1_pos_count, v1_neg_count);
+                int v1_min = min(v1_pos_count, v1_neg_count);
+                int v2_max = max(v2_pos_count, v2_neg_count);
+                int v2_min = min(v2_pos_count, v2_neg_count);
+                double v1_heu = alpha * v1_max + beta * v1_min;
+                double v2_heu = alpha * v2_max + beta * v2_min;
+                if (v1_heu != v2_heu) { return v1_heu > v2_heu; };
+                v1_pos = it_incr(v1->pos_by_cl_len, v1_pos, cl_len);
+                v1_neg = it_incr(v1->neg_by_cl_len, v1_neg, cl_len);
+                v2_pos = it_incr(v2->pos_by_cl_len, v2_pos, cl_len);
+                v2_neg = it_incr(v2->neg_by_cl_len, v2_neg, cl_len);
+            }
+        }
     }
 }
 
@@ -83,12 +161,26 @@ Value pick_polarity(Variable* v) {
             return (v->pos_occ.size() > v->neg_occ.size()) ? Value::t : Value::f;
         case Heuristic::dlis:
         case Heuristic::dlcs:
+        case Heuristic::set_count:
+        case Heuristic::mom:
+        case Heuristic::boehm:
             return (v->pos_lit_occ > v->neg_lit_occ) ? Value::t : Value::f;
     }
 }
 
+bool is_wellformed(Variable* v) {
+    int pos_sum = 0;
+    int neg_sum = 0;
+    for (pair<int,int> p: v->pos_by_cl_len) { pos_sum += p.second; }
+    for (pair<int,int> p: v->neg_by_cl_len) { neg_sum += p.second; }
+    return pos_sum == v->pos_lit_occ && neg_sum == v->neg_lit_occ;
+}
+
 // Assign truth value to a variable.
 void Variable::set(Value new_value, Mark mark) {
+    if (verbose) {
+        cout << "set #" << (this - &*variables.begin()) << " to " << (new_value == Value::t) << "\n";
+    }
     assignments.push_back(make_pair(this, mark));
     value = new_value;
     unassigned_vars.remove(this);
@@ -100,9 +192,16 @@ void Variable::set(Value new_value, Mark mark) {
                 Variable* var = &variables[abs(lit)];
                 if (var->value == Value::unset) {
                     // The variable's number of occurrences decreases by one, because the clause is satisfied, therefore deactivated.
-                    (lit > 0 ? var->pos_lit_occ : var->neg_lit_occ) -= 1;
+                    (lit > 0 ? var->pos_lit_occ : var->neg_lit_occ) -= 1;                   
+
+                    map<int,int>& m = lit > 0 ? var->pos_by_cl_len : var->neg_by_cl_len;
+                    auto search = m.find(cl->active);
+                    if (search->second != 1) { search->second -= 1; }
+                    else { m.erase(search); }
+                    
                     // Since the variable's number of occurrences decreased, the priority can only decrease.
                     unassigned_vars.move_down(var);
+                    assert(is_wellformed(var));
                 }
             }
         }
@@ -110,11 +209,22 @@ void Variable::set(Value new_value, Mark mark) {
     for (Clause* cl: (value == Value::t) ? neg_occ : pos_occ) {
         if (cl->sat_var == nullptr) {
             cl->active -= 1;
-            if (cl->active == 1) {
-                unit_clauses.push_back(cl);
-            } else if (cl->active == 0) {
-                found_conflict = true;
+            for (int lit: cl->lits) {
+                Variable* var = &variables[abs(lit)];
+                if (var->value == Value::unset) {
+                    map<int,int>& m = lit > 0 ? var->pos_by_cl_len : var->neg_by_cl_len;
+                    auto search = m.find(cl->active+1);
+                    if (search->second != 1) { search->second -= 1; }
+                    else { m.erase(search); }
+                    m[cl->active] += 1;
+
+                    // The number of clauses with fewer variables increase. Since our heuristics favor clauses of shorter length, the priority of the variable increases.
+                    unassigned_vars.move_up(var);
+                    assert(is_wellformed(var));
+                }
             }
+            if (cl->active == 1) { unit_clauses.push_back(cl); } 
+            else if (cl->active == 0) { found_conflict = true; }
         }
     }
     if (found_conflict) {backtrack();}
@@ -122,6 +232,7 @@ void Variable::set(Value new_value, Mark mark) {
 
 // Unassign truth value of a variable.
 void Variable::unset() {
+    if (verbose) cout << "unset #" << (this - &*variables.begin()) <<  "\n";
     for (Clause* cl: (value == Value::t) ? pos_occ : neg_occ) {
         if (cl->sat_var == this) {
             cl->sat_var = nullptr;
@@ -130,8 +241,12 @@ void Variable::unset() {
                 if (var->value == Value::unset) {
                     // The variable's number of occurrences increases by one, because the variable that satistifed the clause is unset, therefore the clause is active again.
                     (lit > 0 ? var->pos_lit_occ : var->neg_lit_occ) += 1;
+                    
+                    (lit > 0 ? var->pos_by_cl_len : var->neg_by_cl_len)[cl->active] += 1;
+
                     // Since the variable's number of occurrences increased, the priority can only increase.
                     unassigned_vars.move_up(var);
+                    assert(is_wellformed(var));
                 }
             }
         }
@@ -139,6 +254,20 @@ void Variable::unset() {
     for (Clause* cl: (value == Value::t) ? neg_occ : pos_occ) {
         if (cl->sat_var == nullptr) {
             cl->active += 1;
+            for (int lit: cl->lits) {
+                Variable* var = &variables[abs(lit)];
+                if (var->value == Value::unset) {
+                    map<int,int>& m = lit > 0 ? var->pos_by_cl_len : var->neg_by_cl_len;
+                    auto search = m.find(cl->active-1);
+                    if (search->second != 1) { search->second -= 1; }
+                    else { m.erase(search); }
+                    m[cl->active] += 1;
+
+                    // The number of clauses with more variables increase. Since our heuristics favor clauses of shorter length, the priority of the variable decreases.
+                    unassigned_vars.move_down(var);
+                    assert(is_wellformed(var));
+                }
+            }
         }
     }
     value = Value::unset;
@@ -172,30 +301,43 @@ void fromFile(string path) {
 
         // Fill the deque of clauses.
         for (int i = 0; i < num_clauses; ++i) {
-            vector<int> lits;
+            set<int> lits_set;  // removes duplicate literals; for detecting tautological clause
             int lit;
             file >> lit;
             while (lit != 0) {
-                lits.push_back(lit);
+                lits_set.insert(lit);
                 file >> lit;
             }
+            
+            // Only process non-tautological clauses.
+            bool tautology = false;
+            for (int lit: lits_set) {
+                if (lits_set.count(-lit) > 0) {
+                    tautology = true;
+                    break;
+                }
+            }
+            if (tautology) { continue; }
+            vector<int> lits;
+            for (int lit: lits_set) { lits.push_back(lit); }
             clauses.push_back(Clause(lits, lits.size()));
 
-            Clause* cl = &clauses[i];
-            if (cl->active == 1) {unit_clauses.push_back(cl);}
+            Clause* cl = &clauses.back();
+            if (cl->active == 1) { unit_clauses.push_back(cl); }
 
             for (int lit: lits) {
                 if (lit > 0) {
                     variables[lit].pos_occ.push_back(cl);
                     variables[lit].pos_lit_occ += 1;
+                    variables[lit].pos_by_cl_len[cl->active] += 1;
                 } else {
                     variables[-lit].neg_occ.push_back(cl);
                     variables[-lit].neg_lit_occ += 1;
+                    variables[-lit].neg_by_cl_len[cl->active] += 1;
                 }
             }
         }
         assert(variables.size() == num_vars+1);
-        assert(clauses.size() == num_clauses);
     }
 }
 
@@ -225,6 +367,7 @@ void backtrack() {
         Variable* var = assignments.back().first;
         Mark mark = assignments.back().second;
         assignments.pop_back();
+        ++var->priority;
         if (mark == Mark::forced) {
             var->unset();
         }
@@ -248,18 +391,22 @@ int main(int argc, const char* argv[]) {
             else if (option == "-slcs") { heu = Heuristic::slcs; }
             else if (option == "-dlis") { heu = Heuristic::dlis; }
             else if (option == "-dlcs") { heu = Heuristic::dlcs; }
-            // else if (option == "-mom") { heu = Heuristic::mom; }
-            // else if (option == "-boehm") { heu = Heuristic::boehm; }
+            else if (option == "-sc") { heu = Heuristic::set_count; }
+            else if (option == "-mom") { heu = Heuristic::mom; }
+            else if (option == "-boehm") { heu = Heuristic::boehm; }
             // else if (option == "-jw") { heu = Heuristic::jw; }
+            else if (option == "-v") { verbose = true; }
             else {
                 cout << "Unknown argument.\nPossible options:\n";
                 cout << "-slis\tuse the S(tatic)LIS heuristic\n";
                 cout << "-slcs\tuse the S(tatic)LCS heuristic\n";
                 cout << "-dlis\tuse the DLIS heuristic\n";
                 cout << "-dlcs\tuse the DLCS heuristic\n";
-                // cout << "-mom\tuse the MOM heuristic\n";
-                // cout << "-boehm\tuse Boehm's heuristic\n";
+                cout << "-sc\tuse heuristic based on how many times a variable has been assigned a value\n";
+                cout << "-mom\tuse the MOM heuristic\n";
+                cout << "-boehm\tuse Boehm's heuristic\n";
                 // cout << "-jw\tuse the Jeroslaw-Wang heuristic\n";
+                cout << "-v\tverbose mode for debugging\n";
                 exit(1);
             }
         } else { filename = option; }
@@ -268,23 +415,31 @@ int main(int argc, const char* argv[]) {
     fromFile(filename);
     // Fill the unassigned_vars heap. Originally all variables are unassigned.
     for (int i = 1; i < variables.size(); ++i) { unassigned_vars.insert(&variables[i]); }
-    // There could be unit clauses in the original formula.
+    // There could be unit clauses in the original formula. If unit-propagation solves the while formula, the following while-loop will not be executed.
     unit_prop();
 
-    while (true) {
+    while (variables.size()-1 != assignments.size()) {
         // Always pick the variable of highest priority to branch on.
         Variable* picked_var = unassigned_vars.heap[1];
+        if (verbose) {
+            cout << "branching on #" << (picked_var - &*variables.begin()) << " pos_occ: ";
+            for (pair<int,int> p : picked_var->pos_by_cl_len) {
+                cout << p.first << ":" << p.second << " ";
+            }
+            cout << " neg_occ: ";
+            for (pair<int,int> p : picked_var->neg_by_cl_len) {
+                cout << p.first << ":" << p.second << " ";
+            }
+            cout << "\n";
+        }
         picked_var->set(pick_polarity(picked_var), Mark::branching);
         unit_prop();
-
-        if (variables.size()-1 == assignments.size()) {
-            cout << "s Satisfiable\n";
-            cout << "v ";
-            for (int i = 1; i < variables.size(); ++i) {
-                cout << ((variables[i].value == Value::t) ? i : -i) << " ";
-            }
-            cout << "0\n";
-            return 0;
-        }
     }
+    cout << "s Satisfiable\n";
+    cout << "v ";
+    for (int i = 1; i < variables.size(); ++i) {
+        cout << ((variables[i].value == Value::t) ? i : -i) << " ";
+    }
+    cout << "0\n";
+    return 0;
 }
