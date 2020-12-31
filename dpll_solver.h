@@ -9,7 +9,8 @@
 #include <string>
 #include <cassert>
 #include <map>
-#include <cmath>  
+#include <cmath> 
+#include <limits>
 
 using namespace std;
 
@@ -34,6 +35,7 @@ enum class Mark {
 };
 
 struct Variable {
+    int var;
     Value value = Value::unset;
     vector<Clause*> pos_occ;
     vector<Clause*> neg_occ;
@@ -45,6 +47,7 @@ struct Variable {
     int priority = 0;
     void set(Value, Mark);
     void unset();
+    Variable(int var) : var{var}{}
 };
 
 enum class Heuristic {

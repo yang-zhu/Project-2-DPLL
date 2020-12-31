@@ -4,7 +4,7 @@ vector<Variable> variables;
 deque<Clause> clauses;  // uses deque instead of vector to avoid dangling pointers
 vector<pair<Variable*, Mark>> assignments;
 vector<Clause*> unit_clauses;
-vector<Variable*> pure_lits;
+map<int, Variable*> pure_lits;
 Heap unassigned_vars;
 Heuristic heu = Heuristic::none;  // The default setting is without any heuristics.
 bool verbose = false;
@@ -74,9 +74,6 @@ map<int,int>::iterator it_incr(const map<int,int>& m, map<int,int>::iterator it,
 // Different ways to compare priorities of literals/variables.
 bool greater_than(Variable* v1, Variable* v2) {
     switch(heu) {
-        case Heuristic::none:
-            // Compare variables according to their pointer values, which correponds to the numeric value of the variables in the input file.
-            return v1 > v2;
         case Heuristic::slis:
             // Static Literal Individual Sum: Compare literals according to their number of occurrences. It does not keep track of the change of clauses, therefore the priority value of each literal is not modified anymore once the heap is established.
             return max(v1->pos_occ.size(), v1->neg_occ.size()) > max(v2->pos_occ.size(), v2->neg_occ.size());
@@ -131,7 +128,7 @@ bool greater_than(Variable* v1, Variable* v2) {
                 if (v2_neg != v2->neg_by_cl_len.end()) {
                     cl_len = min(cl_len, v2_neg->first);
                 }
-                if (cl_len == numeric_limits<int>::max()) { return false; }
+                if (cl_len == std::numeric_limits<int>::max()) { return false; }
                 int v1_pos_count = get_or_default(v1->pos_by_cl_len, cl_len);
                 int v1_neg_count = get_or_default(v1->neg_by_cl_len, cl_len);
                 int v2_pos_count = get_or_default(v2->pos_by_cl_len, cl_len);
@@ -149,14 +146,15 @@ bool greater_than(Variable* v1, Variable* v2) {
                 v2_neg = it_incr(v2->neg_by_cl_len, v2_neg, cl_len);
             }
         }
+        default:
+            // Compare variables according to their pointer values, which correponds to the numeric value of the variables in the input file.
+            return v1 > v2;
     }
 }
 
 // Pick a polarity for a variable.
 Value pick_polarity(Variable* v) {
     switch(heu) {
-        case Heuristic::none:
-            return Value::t;
         case Heuristic::slis:
         case Heuristic::slcs:
             return (v->pos_occ.size() > v->neg_occ.size()) ? Value::t : Value::f;
@@ -166,6 +164,8 @@ Value pick_polarity(Variable* v) {
         case Heuristic::mom:
         case Heuristic::boehm:
             return (v->pos_lit_occ > v->neg_lit_occ) ? Value::t : Value::f;
+        default:
+            return Value::t;
     }
 }
 
@@ -193,7 +193,23 @@ void Variable::set(Value new_value, Mark mark) {
                 Variable* var = &variables[abs(lit)];
                 if (var->value == Value::unset) {
                     // The variable's number of occurrences decreases by one, because the clause is satisfied, therefore deactivated.
-                    (lit > 0 ? var->pos_lit_occ : var->neg_lit_occ) -= 1;                   
+                    int pure_contr = 1;
+                    if (lit > 0){
+                        if (var->pos_lit_occ > 0){
+                            var->pos_lit_occ -=1;
+                        }
+                    } else {
+                        if (var->neg_lit_occ > 0){
+                            var->neg_lit_occ -=1;
+                        }
+                    }
+                    //a^2+b^2 = (a+b)^2 <=> (a*b=0) && (a+b !=0)  <=> only one var = 0
+                    if (pow(var->pos_lit_occ, 2) + pow(var->neg_lit_occ, 2) == pow(var->pos_lit_occ + var->neg_lit_occ, 2)){
+                        pure_lits.insert(make_pair(var->var, var));
+                    } else if (var->pos_lit_occ*var->neg_lit_occ == 0){
+                        //if more than one claus are deleted by unit_prop in one branching
+                        pure_lits.erase(var->var);
+                    } 
 
                     map<int,int>& m = lit > 0 ? var->pos_by_cl_len : var->neg_by_cl_len;
                     auto search = m.find(cl->active);
@@ -295,9 +311,9 @@ void fromFile(string path) {
         file >> cnf >> num_vars >> num_clauses;
 
         // Fill the vector of variables.
-        variables.push_back(Variable());  // to allow indexing of variables to start from 1
+        variables.push_back(Variable(0));  // to allow indexing of variables to start from 1
         for (int i = 1; i < num_vars+1; ++i) {
-            variables.push_back(Variable());
+            variables.push_back(Variable(i));
         }
 
         // Fill the deque of clauses.
@@ -341,7 +357,7 @@ void fromFile(string path) {
 
         for (int i = 1; i < num_vars+1; ++i) {
             if (variables[i].pos_occ.empty() || variables[i].neg_occ.empty()){
-                pure_lits.push_back(&variables[i]);
+                pure_lits.insert(make_pair(i, &variables[i]));
             }
         }
         assert(variables.size() == num_vars+1);
@@ -369,17 +385,17 @@ void unit_prop() {
 
 //pure literals and subsumption
 void pure_Lit(){
-     while(!pure_lits.empty()){
-         Variable* var = pure_lits.back();
-         if (var->value == Value::unset){
-             Value v = Value::t;
-             if(var->pos_occ.empty()){
-                 v = Value::f;
-             }
-             var->set(v, Mark::forced);
-         }
-         pure_lits.pop_back();
-     }
+    for (auto &paire :pure_lits){
+        Variable* var = paire.second;
+        if (var->value == Value::unset){
+            Value v = Value::t;
+            if(var->pos_occ.empty()){
+                v = Value::f;
+            }
+            var->set(v, Mark::forced);
+        }
+    }
+    pure_lits.clear();
 }
 
 void subs(){
@@ -389,6 +405,7 @@ void subs(){
 // Backtracking
 void backtrack() {
     unit_clauses.clear();
+    pure_lits.clear();
     while (!assignments.empty()) {
         Variable* var = assignments.back().first;
         Mark mark = assignments.back().second;
