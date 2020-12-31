@@ -66,6 +66,10 @@ struct Heap {  // a max-heap
     void move_down(Variable*);
 };
 
+void pure_Lit();
+
+void subs();
+
 void backtrack();
 
 #endif

@@ -4,6 +4,7 @@ vector<Variable> variables;
 deque<Clause> clauses;  // uses deque instead of vector to avoid dangling pointers
 vector<pair<Variable*, Mark>> assignments;
 vector<Clause*> unit_clauses;
+vector<Variable*> pure_lits;
 Heap unassigned_vars;
 Heuristic heu = Heuristic::none;  // The default setting is without any heuristics.
 
@@ -194,6 +195,12 @@ void fromFile(string path) {
                 }
             }
         }
+
+        for (int i = 1; i < num_vars+1; ++i) {
+            if (variables[i].pos_occ.empty() || variables[i].neg_occ.empty()){
+                pure_lits.push_back(&variables[i]);
+            }
+        }
         assert(variables.size() == num_vars+1);
         assert(clauses.size() == num_clauses);
     }
@@ -216,6 +223,25 @@ void unit_prop() {
             }
         }
     }
+}
+
+//pure literals and subsumption
+void pure_Lit(){
+     while(!pure_lits.empty()){
+         Variable* var = pure_lits.back();
+         if (var->value == Value::unset){
+             Value v = Value::t;
+             if(var->pos_occ.empty()){
+                 v = Value::f;
+             }
+             var->set(v, Mark::forced);
+         }
+         pure_lits.pop_back();
+     }
+}
+
+void subs(){
+
 }
 
 // Backtracking
@@ -270,6 +296,7 @@ int main(int argc, const char* argv[]) {
     for (int i = 1; i < variables.size(); ++i) { unassigned_vars.insert(&variables[i]); }
     // There could be unit clauses in the original formula.
     unit_prop();
+    pure_Lit();
 
     while (true) {
         // Always pick the variable of highest priority to branch on.
