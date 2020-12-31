@@ -3,10 +3,13 @@
 
 #include <iostream>
 #include <fstream> 
-#include <vector> 
+#include <vector>
+#include <set> 
 #include <deque> 
 #include <string>
-#include <cassert>  
+#include <cassert>
+#include <map>
+#include <cmath>  
 
 using namespace std;
 
@@ -37,12 +40,15 @@ struct Variable {
     int pos_lit_occ = 0;  // Keep track of the occurrence of a positive literal in active clauses.
     int neg_lit_occ = 0;  // Keep track of the occurrence of a negative literal in active clauses.
     int pos_in_heap = 0;  // A variable's position in the heap, which is used to update the heap.
+    map<int,int> pos_by_cl_len;
+    map<int,int> neg_by_cl_len;
+    int priority = 0;
     void set(Value, Mark);
     void unset();
 };
 
 enum class Heuristic {
-    none, slis, slcs, dlis, dlcs//, mom, boehm, jw
+    none, slis, slcs, dlis, dlcs, set_count, mom, boehm//, jw
 };
 
 bool greater_than(Variable*, Variable*);
