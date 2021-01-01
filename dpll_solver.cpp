@@ -220,10 +220,7 @@ void Variable::set(Value new_value, Mark mark) {
             for (int lit: cl->lits) {
                 Variable* var = &variables[abs(lit)];
                 if (var->value == Value::unset) {
-                    // The variable's number of occurrences decreases by one, because the clause is satisfied, therefore deactivated.
-                    (lit > 0 ? var->pos_lit_occ : var->neg_lit_occ) -= 1;
-                    assert(pos_lit_occ >= 0 && neg_lit_occ >= 0);
-
+                    
                     //a^2+b^2 = (a+b)^2 <=> (a*b=0) && (a+b !=0)  <=> only one var = 0
                     // if (pow(var->pos_lit_occ, 2) + pow(var->neg_lit_occ, 2) == pow(var->pos_lit_occ + var->neg_lit_occ, 2)){
                     //     pure_lits.insert(make_pair(var->var, var));
@@ -231,10 +228,20 @@ void Variable::set(Value new_value, Mark mark) {
                     //     //if more than one claus are deleted by unit_prop in one branching
                     //     pure_lits.erase(var->var);
                     // }
-
-                    if (use_pure_lit) {
-                        if (var->pos_lit_occ == 0 || var->neg_lit_occ == 0) { pure_lits.push_back(var); }
+                    
+                    // The literal's number of occurrences decreases by one, because the clause is satisfied, therefore deactivated.
+                    if (lit > 0) {
+                        var->pos_lit_occ -= 1;
+                        if (use_pure_lit) {
+                            if (var->pos_lit_occ == 0) { pure_lits.push_back(var); }
+                        }
+                    } else {
+                        var->neg_lit_occ -= 1;
+                        if (use_pure_lit) {
+                            if (var->neg_lit_occ == 0) { pure_lits.push_back(var); }
+                        }
                     }
+                    assert(pos_lit_occ >= 0 && neg_lit_occ >= 0);
 
                     map<int,int>& m = lit > 0 ? var->pos_by_cl_len : var->neg_by_cl_len;
                     auto search = m.find(cl->active);
