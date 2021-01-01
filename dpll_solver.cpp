@@ -146,12 +146,38 @@ bool greater_than(Variable* v1, Variable* v2) {
                 v2_neg = it_incr(v2->neg_by_cl_len, v2_neg, cl_len);
             }
         }
+        case Heuristic::jw:{
+            return jeroslow_wang(v1) > jeroslow_wang(v2);
+        }
         default:
             // Compare variables according to their pointer values, which correponds to the numeric value of the variables in the input file.
             return v1 > v2;
     }
 }
 
+int jeroslow_wang(Variable* v){
+    int i = 0;
+    int j = 0;
+
+    while(i < v->pos_lit_occ){
+        for (auto cl: v->pos_occ){
+            if(cl->sat_var==nullptr){
+                j += pow(2, cl->active);
+                ++i;
+            }
+        }
+    }
+    i = 0;
+    while(i < v->neg_lit_occ){
+        for (auto cl: v->neg_occ){
+            if(cl->sat_var==nullptr){
+                j += pow(2, cl->active);
+                ++i;
+            }
+        }
+    }
+    return j; 
+}
 // Pick a polarity for a variable.
 Value pick_polarity(Variable* v) {
     switch(heu) {
@@ -427,8 +453,14 @@ void backtrack() {
 
 int main(int argc, const char* argv[]) {
     string filename;
+    if (argc <= 1){
+        cout<< "Please give at least the path to a cnf file \n";
+        cout<< "and select one heuristics optionally with [-slis, -slcs, -dlis, -dlcs, -sc, -mom, -boehm]"<<endl;
+        exit(0);
+    } 
     for (int i = 1; i < argc; ++i) {
         string option = string(argv[i]);
+        
         if (option[0] == '-') {
             if (option == "-slis") { heu = Heuristic::slis; }
             else if (option == "-slcs") { heu = Heuristic::slcs; }
@@ -437,7 +469,7 @@ int main(int argc, const char* argv[]) {
             else if (option == "-sc") { heu = Heuristic::set_count; }
             else if (option == "-mom") { heu = Heuristic::mom; }
             else if (option == "-boehm") { heu = Heuristic::boehm; }
-            // else if (option == "-jw") { heu = Heuristic::jw; }
+            else if (option == "-jw") { heu = Heuristic::jw; }
             else if (option == "-v") { verbose = true; }
             else {
                 cout << "Unknown argument.\nPossible options:\n";
@@ -448,7 +480,7 @@ int main(int argc, const char* argv[]) {
                 cout << "-sc\tuse heuristic based on how many times a variable has been assigned a value\n";
                 cout << "-mom\tuse the MOM heuristic\n";
                 cout << "-boehm\tuse Boehm's heuristic\n";
-                // cout << "-jw\tuse the Jeroslaw-Wang heuristic\n";
+                cout << "-jw\tuse the Jeroslaw-Wang heuristic\n";
                 cout << "-v\tverbose mode for debugging\n";
                 exit(1);
             }
@@ -478,6 +510,7 @@ int main(int argc, const char* argv[]) {
         }
         picked_var->set(pick_polarity(picked_var), Mark::branching);
         unit_prop();
+        pure_Lit();
     }
     cout << "s Satisfiable\n";
     cout << "v ";

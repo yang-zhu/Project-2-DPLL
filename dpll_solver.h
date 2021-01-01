@@ -51,7 +51,7 @@ struct Variable {
 };
 
 enum class Heuristic {
-    none, slis, slcs, dlis, dlcs, set_count, mom, boehm//, jw
+    none, slis, slcs, dlis, dlcs, set_count, mom, boehm, jw
 };
 
 bool greater_than(Variable*, Variable*);
@@ -80,5 +80,7 @@ void pure_Lit();
 void subs();
 
 void backtrack();
+
+int jeroslow_wang(Variable* v);
 
 #endif
