@@ -4,7 +4,9 @@ vector<Variable> variables;
 deque<Clause> clauses;  // uses deque instead of vector to avoid dangling pointers
 vector<pair<Variable*, Mark>> assignments;
 vector<Clause*> unit_clauses;
-map<int, Variable*> pure_lits;
+//map<int, Variable*> pure_lits;
+bool use_pure_lit = false;
+vector<Variable*> pure_lits;
 Heap unassigned_vars;
 Heuristic heu = Heuristic::none;  // The default setting is without any heuristics.
 bool verbose = false;
@@ -108,8 +110,8 @@ bool greater_than(Variable* v1, Variable* v2) {
             return v1_heu > v2_heu;
         }
         case Heuristic::boehm: {
-            const double alpha = 100;
-            const double beta = 50;
+            const int alpha = 100;
+            const int beta = 50;
             auto v1_pos = v1->pos_by_cl_len.begin();
             auto v1_neg = v1->neg_by_cl_len.begin();
             auto v2_pos = v2->pos_by_cl_len.begin();
@@ -128,7 +130,7 @@ bool greater_than(Variable* v1, Variable* v2) {
                 if (v2_neg != v2->neg_by_cl_len.end()) {
                     cl_len = min(cl_len, v2_neg->first);
                 }
-                if (cl_len == std::numeric_limits<int>::max()) { return false; }
+                if (cl_len == numeric_limits<int>::max()) { return false; }
                 int v1_pos_count = get_or_default(v1->pos_by_cl_len, cl_len);
                 int v1_neg_count = get_or_default(v1->neg_by_cl_len, cl_len);
                 int v2_pos_count = get_or_default(v2->pos_by_cl_len, cl_len);
@@ -180,7 +182,7 @@ bool is_wellformed(Variable* v) {
 // Assign truth value to a variable.
 void Variable::set(Value new_value, Mark mark) {
     if (verbose) {
-        cout << "set #" << (this - &*variables.begin()) << " to " << (new_value == Value::t) << "\n";
+        cout << "set #" << (this - &variables[0]) << " to " << (new_value == Value::t) << "\n";
     }
     assignments.push_back(make_pair(this, mark));
     value = new_value;
@@ -193,23 +195,20 @@ void Variable::set(Value new_value, Mark mark) {
                 Variable* var = &variables[abs(lit)];
                 if (var->value == Value::unset) {
                     // The variable's number of occurrences decreases by one, because the clause is satisfied, therefore deactivated.
-                    int pure_contr = 1;
-                    if (lit > 0){
-                        if (var->pos_lit_occ > 0){
-                            var->pos_lit_occ -=1;
-                        }
-                    } else {
-                        if (var->neg_lit_occ > 0){
-                            var->neg_lit_occ -=1;
-                        }
-                    }
+                    (lit > 0 ? var->pos_lit_occ : var->neg_lit_occ) -= 1;
+                    assert(pos_lit_occ >= 0 && neg_lit_occ >= 0);
+
                     //a^2+b^2 = (a+b)^2 <=> (a*b=0) && (a+b !=0)  <=> only one var = 0
-                    if (pow(var->pos_lit_occ, 2) + pow(var->neg_lit_occ, 2) == pow(var->pos_lit_occ + var->neg_lit_occ, 2)){
-                        pure_lits.insert(make_pair(var->var, var));
-                    } else if (var->pos_lit_occ*var->neg_lit_occ == 0){
-                        //if more than one claus are deleted by unit_prop in one branching
-                        pure_lits.erase(var->var);
-                    } 
+                    // if (pow(var->pos_lit_occ, 2) + pow(var->neg_lit_occ, 2) == pow(var->pos_lit_occ + var->neg_lit_occ, 2)){
+                    //     pure_lits.insert(make_pair(var->var, var));
+                    // } else if (var->pos_lit_occ*var->neg_lit_occ == 0){
+                    //     //if more than one claus are deleted by unit_prop in one branching
+                    //     pure_lits.erase(var->var);
+                    // }
+
+                    if (use_pure_lit) {
+                        if (var->pos_lit_occ == 0 || var->neg_lit_occ == 0) { pure_lits.push_back(var); }
+                    }
 
                     map<int,int>& m = lit > 0 ? var->pos_by_cl_len : var->neg_by_cl_len;
                     auto search = m.find(cl->active);
@@ -249,7 +248,7 @@ void Variable::set(Value new_value, Mark mark) {
 
 // Unassign truth value of a variable.
 void Variable::unset() {
-    if (verbose) cout << "unset #" << (this - &*variables.begin()) <<  "\n";
+    if (verbose) cout << "unset #" << (this - &variables[0]) <<  "\n";
     for (Clause* cl: (value == Value::t) ? pos_occ : neg_occ) {
         if (cl->sat_var == this) {
             cl->sat_var = nullptr;
@@ -311,9 +310,9 @@ void fromFile(string path) {
         file >> cnf >> num_vars >> num_clauses;
 
         // Fill the vector of variables.
-        variables.push_back(Variable(0));  // to allow indexing of variables to start from 1
+        variables.push_back(Variable());  // to allow indexing of variables to start from 1
         for (int i = 1; i < num_vars+1; ++i) {
-            variables.push_back(Variable(i));
+            variables.push_back(Variable());
         }
 
         // Fill the deque of clauses.
@@ -357,7 +356,8 @@ void fromFile(string path) {
 
         for (int i = 1; i < num_vars+1; ++i) {
             if (variables[i].pos_occ.empty() || variables[i].neg_occ.empty()){
-                pure_lits.insert(make_pair(i, &variables[i]));
+                //pure_lits.insert(make_pair(i, &variables[i]));
+                pure_lits.push_back(&variables[i]);
             }
         }
         assert(variables.size() == num_vars+1);
@@ -385,17 +385,16 @@ void unit_prop() {
 
 //pure literals and subsumption
 void pure_Lit(){
-    for (auto &paire :pure_lits){
-        Variable* var = paire.second;
-        if (var->value == Value::unset){
-            Value v = Value::t;
-            if(var->pos_occ.empty()){
-                v = Value::f;
+    if (use_pure_lit) {
+        for (Variable* var: pure_lits){
+            //Variable* var = paire.second;
+            if (var->value == Value::unset){
+                Value v = var->pos_lit_occ == 0 ? Value::f : Value::t;
+                var->set(v, Mark::forced);
             }
-            var->set(v, Mark::forced);
         }
+        pure_lits.clear();
     }
-    pure_lits.clear();
 }
 
 void subs(){
@@ -438,6 +437,7 @@ int main(int argc, const char* argv[]) {
             else if (option == "-mom") { heu = Heuristic::mom; }
             else if (option == "-boehm") { heu = Heuristic::boehm; }
             // else if (option == "-jw") { heu = Heuristic::jw; }
+            else if (option == "-p") { use_pure_lit = true; }
             else if (option == "-v") { verbose = true; }
             else {
                 cout << "Unknown argument.\nPossible options:\n";
@@ -449,6 +449,7 @@ int main(int argc, const char* argv[]) {
                 cout << "-mom\tuse the MOM heuristic\n";
                 cout << "-boehm\tuse Boehm's heuristic\n";
                 // cout << "-jw\tuse the Jeroslaw-Wang heuristic\n";
+                cout << "-p\tenable pure literal elimination\n";
                 cout << "-v\tverbose mode for debugging\n";
                 exit(1);
             }
