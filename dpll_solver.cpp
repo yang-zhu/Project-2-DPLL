@@ -4,7 +4,6 @@ vector<Variable> variables;
 deque<Clause> clauses;  // uses deque instead of vector to avoid dangling pointers
 vector<pair<Variable*, Mark>> assignments;
 vector<Clause*> unit_clauses;
-//map<int, Variable*> pure_lits;
 bool use_pure_lit = false;
 vector<Variable*> pure_lits;
 Heap unassigned_vars;
@@ -167,7 +166,7 @@ bool greater_than(Variable* v1, Variable* v2) {
             }
         }
         case Heuristic::jw:{
-            return jeroslow_wang(v1) > jeroslow_wang(v2);
+            return jeroslaw_wang(v1) > jeroslaw_wang(v2);
         }
         default:
             // Compare variables according to their pointer values, which correponds to the numeric value of the variables in the input file.
@@ -175,7 +174,7 @@ bool greater_than(Variable* v1, Variable* v2) {
     }
 }
 
-int jeroslow_wang(Variable* v){
+int jeroslaw_wang(Variable* v){
     int i = 0;
     int j = 0;
 
@@ -240,15 +239,6 @@ void Variable::set(Value new_value, Mark mark) {
                 for (int lit: cl->lits) {
                     Variable* var = &variables[abs(lit)];
                     if (var->value == Value::unset) {
-                        
-                        //a^2+b^2 = (a+b)^2 <=> (a*b=0) && (a+b !=0)  <=> only one var = 0
-                        // if (pow(var->pos_lit_occ, 2) + pow(var->neg_lit_occ, 2) == pow(var->pos_lit_occ + var->neg_lit_occ, 2)){
-                        //     pure_lits.insert(make_pair(var->var, var));
-                        // } else if (var->pos_lit_occ*var->neg_lit_occ == 0){
-                        //     //if more than one claus are deleted by unit_prop in one branching
-                        //     pure_lits.erase(var->var);
-                        // }
-                        
                         // The literal's number of occurrences decreases by one, because the clause is satisfied, therefore deactivated.
                         // Every variable will be appended to pure_lits at most twice.
                         if (lit > 0) {
@@ -424,7 +414,6 @@ void fromFile(string path) {
 
         for (int i = 1; i < num_vars+1; ++i) {
             if (variables[i].pos_occ.empty() || variables[i].neg_occ.empty()){
-                //pure_lits.insert(make_pair(i, &variables[i]));
                 pure_lits.push_back(&variables[i]);
             }
         }
@@ -455,7 +444,6 @@ void unit_prop() {
 void pure_Lit(){
     if (use_pure_lit) {
         for (Variable* var: pure_lits){
-            //Variable* var = paire.second;
             if (var->value == Value::unset){
                 Value v = var->active_pos_occ == 0 ? Value::f : Value::t;
                 var->set(v, Mark::forced);
@@ -510,7 +498,6 @@ int main(int argc, const char* argv[]) {
             else if (option == "-bc") { heu = Heuristic::backtrack_count; }
             else if (option == "-mom") { heu = Heuristic::mom; }
             else if (option == "-boehm") { heu = Heuristic::boehm; }
-            else if (option == "-jw") { heu = Heuristic::jw; }
             else if (option == "-jw") { heu = Heuristic::jw; }
             else if (option == "-p") { use_pure_lit = true; }
             else if (option == "-v") { verbose = true; }
