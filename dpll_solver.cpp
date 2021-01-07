@@ -166,7 +166,7 @@ bool greater_than(Variable* v1, Variable* v2) {
             }
         }
         case Heuristic::jw:{
-            return jeroslaw_wang(v1) > jeroslaw_wang(v2);
+            return jeroslow_wang(v1) > jeroslow_wang(v2);
         }
         default:
             // Compare variables according to their pointer values, which correponds to the numeric value of the variables in the input file.
@@ -174,24 +174,20 @@ bool greater_than(Variable* v1, Variable* v2) {
     }
 }
 
-int jeroslaw_wang(Variable* v){
-    int i = 0;
+int jeroslow_wang(Variable* v){
     int j = 0;
 
-    while(i < v->active_pos_occ){
+    if (v->active_pos_occ > 0){
         for (auto cl: v->pos_occ){
             if(cl->sat_var==nullptr){
-                j += pow(2, cl->active);
-                ++i;
+                j += pow(2, -(cl->active));
             }
         }
     }
-    i = 0;
-    while(i < v->active_neg_occ){
+    if (v->active_neg_occ > 0){
         for (auto cl: v->neg_occ){
             if(cl->sat_var==nullptr){
-                j += pow(2, cl->active);
-                ++i;
+                j += pow(2, -(cl->active));
             }
         }
     }
@@ -201,14 +197,21 @@ int jeroslaw_wang(Variable* v){
 Value pick_polarity(Variable* v) {
     switch(heu) {
         case Heuristic::slis:
+            return Value::t;
         case Heuristic::slcs:
             return (v->pos_occ.size() > v->neg_occ.size()) ? Value::t : Value::f;
         case Heuristic::dlis:
+            return Value::t;
         case Heuristic::dlcs:
+            return Value::t;
         case Heuristic::backtrack_count:
+            return Value::t;
         case Heuristic::mom:
+            return Value::t;
         case Heuristic::boehm:
             return (v->active_pos_occ > v->active_neg_occ) ? Value::t : Value::f;
+        case Heuristic::jw:
+            return Value::t;
         default:
             return Value::t;
     }
