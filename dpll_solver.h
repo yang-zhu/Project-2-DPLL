@@ -17,14 +17,14 @@ using namespace std;
 struct Variable;
 
 struct Clause {
-    Variable* sat_var = nullptr;
+    Variable* sat_var = nullptr;  // the variable that first satisfies the clause
     vector<int> lits;
     int active;
 
     Clause(vector<int> lits, int active) : lits{lits}, active{active} {}
 };
 
-// Represent truth value.
+// A variable is either unset, false or true.
 enum class Value {
     unset, f, t
 };
@@ -39,19 +39,19 @@ struct Variable {
     Value value = Value::unset;
     vector<Clause*> pos_occ;
     vector<Clause*> neg_occ;
-    int pos_lit_occ = 0;  // Keep track of the occurrence of a positive literal in active clauses.
-    int neg_lit_occ = 0;  // Keep track of the occurrence of a negative literal in active clauses.
-    int pos_in_heap = 0;  // A variable's position in the heap, which is used to update the heap.
-    map<int,int> pos_by_cl_len;
-    map<int,int> neg_by_cl_len;
-    int priority = 0;
+    int active_pos_occ = 0;  // Keep track of the occurrence of a positive literal in active clauses.
+    int active_neg_occ = 0;  // Keep track of the occurrence of a negative literal in active clauses.
+    int heap_position = 0;  // A variable's position in the heap, which is used to update the heap.
+    map<int,int> pos_by_cl_len;  // the occurrences of a positive literal in active clauses, sorted by clause length
+    map<int,int> neg_by_cl_len;  // the occurrences of a negative literal in active clauses, sorted by clause length
+    int backtrack_count = 0;  // for the backtrack_count heuristic
     void set(Value, Mark);
     void unset();
     //Variable(int var) : var{var}{}
 };
 
 enum class Heuristic {
-    none, slis, slcs, dlis, dlcs, set_count, mom, boehm, jw
+    none, slis, slcs, dlis, dlcs, backtrack_count, mom, boehm, jw
 };
 
 bool greater_than(Variable*, Variable*);
