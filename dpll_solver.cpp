@@ -165,54 +165,79 @@ bool greater_than(Variable* v1, Variable* v2) {
                 v2_neg = it_incr(v2->neg_by_cl_len, v2_neg, cl_len);
             }
         }
-        case Heuristic::jw:{
-            return jeroslow_wang(v1) > jeroslow_wang(v2);
-        }
-        default:
+        case Heuristic::jw1:
+            // return jeroslow_wang(v1) > jeroslow_wang(v2);
+            return max(jeroslow_wang1(v1->pos_by_cl_len), jeroslow_wang1(v1->neg_by_cl_len)) > max(jeroslow_wang1(v2->pos_by_cl_len), jeroslow_wang1(v2->neg_by_cl_len));
+        case Heuristic::jw2:
+            // return jeroslow_wang(v1) > jeroslow_wang(v2);
+            return max(jeroslow_wang2(v1, true), jeroslow_wang2(v1, false)) > max(jeroslow_wang2(v2, true), jeroslow_wang2(v2, false));
+        case Heuristic::jw3:
+            return max(v1->jw_pos, v1->jw_neg) > max(v2->jw_pos, v2->jw_neg);
+        case Heuristic::none:
             // Compare variables according to their pointer values, which correponds to the numeric value of the variables in the input file.
             return v1 > v2;
     }
 }
 
-int jeroslow_wang(Variable* v){
-    int j = 0;
+// int jeroslow_wang(Variable* v){
+//     int j = 0;
 
-    if (v->active_pos_occ > 0){
-        for (auto cl: v->pos_occ){
-            if(cl->sat_var==nullptr){
-                j += pow(2, -(cl->active));
-            }
-        }
+//     if (v->active_pos_occ > 0){
+//         for (auto cl: v->pos_occ){
+//             if(cl->sat_var==nullptr){
+//                 j += pow(2, -(cl->active));
+//             }
+//         }
+//     }
+//     if (v->active_neg_occ > 0){
+//         for (auto cl: v->neg_occ){
+//             if(cl->sat_var==nullptr){
+//                 j += pow(2, -(cl->active));
+//             }
+//         }
+//     }
+//     return j; 
+// }
+
+double jeroslow_wang1(const map<int, int>& m) {
+    double score = 0;
+    for (pair<int,int> p: m) {
+        score += p.second * pow(2, -p.first);
     }
-    if (v->active_neg_occ > 0){
-        for (auto cl: v->neg_occ){
-            if(cl->sat_var==nullptr){
-                j += pow(2, -(cl->active));
-            }
-        }
-    }
-    return j; 
+    return score;
 }
+
+double jeroslow_wang2(Variable* v, bool b) {
+    double score = 0;
+    if ((b ? v->active_pos_occ : v->active_neg_occ) > 0) {
+        for (Clause* cl: (b ? v->pos_occ : v->neg_occ)) {
+            if (cl->sat_var == nullptr) {
+                score += pow(2, -cl->active);
+            }
+        }
+    }
+    return score;
+}
+
 // Pick a polarity for a variable.
 Value pick_polarity(Variable* v) {
     switch(heu) {
         case Heuristic::slis:
-            return Value::t;
         case Heuristic::slcs:
             return (v->pos_occ.size() > v->neg_occ.size()) ? Value::t : Value::f;
         case Heuristic::dlis:
-            return Value::t;
         case Heuristic::dlcs:
-            return Value::t;
         case Heuristic::backtrack_count:
-            return Value::t;
         case Heuristic::mom:
-            return Value::t;
         case Heuristic::boehm:
             return (v->active_pos_occ > v->active_neg_occ) ? Value::t : Value::f;
-        case Heuristic::jw:
-            return Value::t;
-        default:
+        case Heuristic::jw1:
+            return (jeroslow_wang1(v->pos_by_cl_len) > jeroslow_wang1(v->neg_by_cl_len)) ? Value::t : Value::f;
+        case Heuristic::jw2:
+            return (jeroslow_wang2(v, true) > jeroslow_wang2(v, false)) ? Value::t : Value::f;
+        case Heuristic::jw3:
+            return (v->jw_pos > v->jw_neg) ? Value::t : Value::f;
+        case Heuristic::none:
             return Value::t;
     }
 }
@@ -238,6 +263,15 @@ void Variable::set(Value new_value, Mark mark) {
     for (Clause* cl: (value == Value::t) ? pos_occ : neg_occ) {
         if (cl->sat_var == nullptr) {
             cl->sat_var = this;
+            if (heu == Heuristic::jw3) {
+                for (int lit: cl->lits) {
+                    Variable* var = &variables[abs(lit)];
+                    if (var->value == Value::unset) { 
+                        (lit > 0 ? var->jw_pos : var->jw_neg) -= pow(2, -cl->active);
+                        unassigned_vars.move_down(var);
+                    }
+                }
+            }
             if (update_active_occ) {
                 for (int lit: cl->lits) {
                     Variable* var = &variables[abs(lit)];
@@ -258,14 +292,13 @@ void Variable::set(Value new_value, Mark mark) {
                         assert(active_pos_occ >= 0 && active_neg_occ >= 0);
 
                         // Decrement the number of clauses of length cl->active, because the clause is satisfied. Delete the pair from the map if the literal does not appear in clauses of this length anymore.
-                        if (heu == Heuristic::mom || heu == Heuristic::boehm) {
+                        if (heu == Heuristic::mom || heu == Heuristic::boehm || heu == Heuristic::jw1) {
                             map<int,int>& m = lit > 0 ? var->pos_by_cl_len : var->neg_by_cl_len;
                             auto search = m.find(cl->active);
                             if (search->second != 1) { search->second -= 1; }
                             else { m.erase(search); }
                             assert(is_wellformed(var));
                         }
-                        
                         // Since the variable's number of occurrences decreased, the priority can only decrease.
                         unassigned_vars.move_down(var);
                     }
@@ -276,17 +309,20 @@ void Variable::set(Value new_value, Mark mark) {
     for (Clause* cl: (value == Value::t) ? neg_occ : pos_occ) {
         if (cl->sat_var == nullptr) {
             cl->active -= 1;
-            if (heu == Heuristic::mom || heu == Heuristic::boehm) {
+            if (heu == Heuristic::mom || heu == Heuristic::boehm || heu == Heuristic::jw1 || heu == Heuristic::jw3) {
                 for (int lit: cl->lits) {
                     Variable* var = &variables[abs(lit)];
                     if (var->value == Value::unset) {
+                        if (heu == Heuristic::jw3) {
+                            (lit > 0 ? var->jw_pos : var->jw_neg) += pow(2, -(cl->active+1));
+                        } else {
                         // The variable var is now in a clause with one fewer active literals, update the counts accordingly.  
                         map<int,int>& m = lit > 0 ? var->pos_by_cl_len : var->neg_by_cl_len;
                         auto search = m.find(cl->active+1);
                         if (search->second != 1) { search->second -= 1; }
                         else { m.erase(search); }
                         m[cl->active] += 1;
-
+                        }
                         // The number of clauses with fewer variables increase. Since our heuristics favor clauses of shorter length, the priority of the variable increases.
                         unassigned_vars.move_up(var);
                         assert(is_wellformed(var));
@@ -306,6 +342,15 @@ void Variable::unset() {
     for (Clause* cl: (value == Value::t) ? pos_occ : neg_occ) {
         if (cl->sat_var == this) {
             cl->sat_var = nullptr;
+            if (heu == Heuristic::jw3) {
+                for (int lit: cl->lits) {
+                    Variable* var = &variables[abs(lit)];
+                    if (var->value == Value::unset) {
+                        (lit > 0 ? var->jw_pos : var->jw_neg) += pow(2, -cl->active);
+                        unassigned_vars.move_up(var);
+                    }
+                }                 
+            }
             if (update_active_occ) {
                 for (int lit: cl->lits) {
                     Variable* var = &variables[abs(lit)];
@@ -313,7 +358,7 @@ void Variable::unset() {
                         // The variable's number of occurrences increases by one, because the variable that satistifed the clause is unset, therefore the clause is active again.
                         (lit > 0 ? var->active_pos_occ : var->active_neg_occ) += 1;
 
-                        if (heu == Heuristic::mom || heu == Heuristic::boehm) {
+                        if (heu == Heuristic::mom || heu == Heuristic::boehm || heu == Heuristic::jw1) {
                             (lit > 0 ? var->pos_by_cl_len : var->neg_by_cl_len)[cl->active] += 1;
                             assert(is_wellformed(var));
                         }
@@ -328,17 +373,20 @@ void Variable::unset() {
     for (Clause* cl: (value == Value::t) ? neg_occ : pos_occ) {
         if (cl->sat_var == nullptr) {
             cl->active += 1;
-            if (heu == Heuristic::mom || heu == Heuristic::boehm) {
+            if (heu == Heuristic::mom || heu == Heuristic::boehm || heu == Heuristic::jw1 || heu == Heuristic::jw3) {
                 for (int lit: cl->lits) {
                     Variable* var = &variables[abs(lit)];
                     if (var->value == Value::unset) {
-                        // The variable var is now in a clause with one more active literal, update the counts accordingly.                    
-                        map<int,int>& m = lit > 0 ? var->pos_by_cl_len : var->neg_by_cl_len;
-                        auto search = m.find(cl->active-1);
-                        if (search->second != 1) { search->second -= 1; }
-                        else { m.erase(search); }
-                        m[cl->active] += 1;
-
+                        if (heu == Heuristic::jw3) {
+                            (lit > 0 ? var->jw_pos : var->jw_neg) -= pow(2, -cl->active);
+                        } else {
+                            // The variable var is now in a clause with one more active literal, update the counts accordingly.                    
+                            map<int,int>& m = lit > 0 ? var->pos_by_cl_len : var->neg_by_cl_len;
+                            auto search = m.find(cl->active-1);
+                            if (search->second != 1) { search->second -= 1; }
+                            else { m.erase(search); }
+                            m[cl->active] += 1;
+                        }
                         // The number of clauses with more variables increase. Since our heuristics favor clauses of shorter length, the priority of the variable decreases.
                         unassigned_vars.move_down(var);
                         assert(is_wellformed(var));
@@ -407,10 +455,12 @@ void fromFile(string path) {
                     variables[lit].pos_occ.push_back(cl);
                     variables[lit].active_pos_occ += 1;
                     variables[lit].pos_by_cl_len[cl->active] += 1;
+                    variables[lit].jw_pos += pow(2, -cl->active);
                 } else {
                     variables[-lit].neg_occ.push_back(cl);
                     variables[-lit].active_neg_occ += 1;
                     variables[-lit].neg_by_cl_len[cl->active] += 1;
+                    variables[-lit].jw_neg += pow(2, -cl->active);
                 }
             }
         }
@@ -501,7 +551,9 @@ int main(int argc, const char* argv[]) {
             else if (option == "-bc") { heu = Heuristic::backtrack_count; }
             else if (option == "-mom") { heu = Heuristic::mom; }
             else if (option == "-boehm") { heu = Heuristic::boehm; }
-            else if (option == "-jw") { heu = Heuristic::jw; }
+            else if (option == "-jw1") { heu = Heuristic::jw1; }
+            else if (option == "-jw2") { heu = Heuristic::jw2; }
+            else if (option == "-jw3") { heu = Heuristic::jw3; }
             else if (option == "-p") { use_pure_lit = true; }
             else if (option == "-v") { verbose = true; }
             else {
@@ -513,14 +565,16 @@ int main(int argc, const char* argv[]) {
                 cout << "-bc\tbacktrack count: a heuristic based on how many times a variable has been backtracked\n";
                 cout << "-mom\tuse the MOM heuristic\n";
                 cout << "-boehm\tuse Boehm's heuristic\n";
-                cout << "-jw\tuse the Jeroslaw-Wang heuristic\n";
+                cout << "-jw1\tuse the Jeroslaw-Wang heuristic\n";
+                cout << "-jw2\tuse the Jeroslaw-Wang heuristic\n";
+                cout << "-jw3\tuse the Jeroslaw-Wang heuristic\n";
                 cout << "-p\tenable pure literal elimination\n";
                 cout << "-v\tverbose mode for debugging\n";
                 exit(1);
             }
         } else { filename = option; }
     }
-    if (heu == Heuristic::dlis || heu == Heuristic::dlcs || heu == Heuristic::mom || heu == Heuristic::boehm || use_pure_lit) { update_active_occ = true; }
+    if (heu == Heuristic::dlis || heu == Heuristic::dlcs || heu == Heuristic::mom || heu == Heuristic::boehm || heu == Heuristic::jw1 || heu == Heuristic::jw2 || use_pure_lit) { update_active_occ = true; }
 
     fromFile(filename);
     // Fill the unassigned_vars heap. Originally all variables are unassigned.
