@@ -10,7 +10,7 @@ To test `dpll_solver`:
 ./dpll_solver <path to a cnf file> [-p] [heuristics]
 ```
 -p enables pure literal elimination
-The heutistics options are: -slis, -slcs, -dlis, -dlcs, -bc, -mom, -boehm
+The heutistics options are: -slis, -slcs, -dlis, -dlcs, -bc, -mom, -boehm, -jw
 
 To test `dpll_solver.py`:
 ```

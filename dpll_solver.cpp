@@ -165,58 +165,12 @@ bool greater_than(Variable* v1, Variable* v2) {
                 v2_neg = it_incr(v2->neg_by_cl_len, v2_neg, cl_len);
             }
         }
-        case Heuristic::jw1:
-            // return jeroslow_wang(v1) > jeroslow_wang(v2);
-            return max(jeroslow_wang1(v1->pos_by_cl_len), jeroslow_wang1(v1->neg_by_cl_len)) > max(jeroslow_wang1(v2->pos_by_cl_len), jeroslow_wang1(v2->neg_by_cl_len));
-        case Heuristic::jw2:
-            // return jeroslow_wang(v1) > jeroslow_wang(v2);
-            return max(jeroslow_wang2(v1, true), jeroslow_wang2(v1, false)) > max(jeroslow_wang2(v2, true), jeroslow_wang2(v2, false));
-        case Heuristic::jw3:
+        case Heuristic::jw:
             return max(v1->jw_pos, v1->jw_neg) > max(v2->jw_pos, v2->jw_neg);
         case Heuristic::none:
             // Compare variables according to their pointer values, which correponds to the numeric value of the variables in the input file.
-            return v1 > v2;
+            return rand() % 2 == 0;
     }
-}
-
-// int jeroslow_wang(Variable* v){
-//     int j = 0;
-
-//     if (v->active_pos_occ > 0){
-//         for (auto cl: v->pos_occ){
-//             if(cl->sat_var==nullptr){
-//                 j += pow(2, -(cl->active));
-//             }
-//         }
-//     }
-//     if (v->active_neg_occ > 0){
-//         for (auto cl: v->neg_occ){
-//             if(cl->sat_var==nullptr){
-//                 j += pow(2, -(cl->active));
-//             }
-//         }
-//     }
-//     return j; 
-// }
-
-double jeroslow_wang1(const map<int, int>& m) {
-    double score = 0;
-    for (pair<int,int> p: m) {
-        score += p.second * pow(2, -p.first);
-    }
-    return score;
-}
-
-double jeroslow_wang2(Variable* v, bool b) {
-    double score = 0;
-    if ((b ? v->active_pos_occ : v->active_neg_occ) > 0) {
-        for (Clause* cl: (b ? v->pos_occ : v->neg_occ)) {
-            if (cl->sat_var == nullptr) {
-                score += pow(2, -cl->active);
-            }
-        }
-    }
-    return score;
 }
 
 // Pick a polarity for a variable.
@@ -231,14 +185,10 @@ Value pick_polarity(Variable* v) {
         case Heuristic::mom:
         case Heuristic::boehm:
             return (v->active_pos_occ > v->active_neg_occ) ? Value::t : Value::f;
-        case Heuristic::jw1:
-            return (jeroslow_wang1(v->pos_by_cl_len) > jeroslow_wang1(v->neg_by_cl_len)) ? Value::t : Value::f;
-        case Heuristic::jw2:
-            return (jeroslow_wang2(v, true) > jeroslow_wang2(v, false)) ? Value::t : Value::f;
-        case Heuristic::jw3:
+        case Heuristic::jw:
             return (v->jw_pos > v->jw_neg) ? Value::t : Value::f;
         case Heuristic::none:
-            return Value::t;
+            return rand()%2 == 0 ? Value::t : Value::f;
     }
 }
 
@@ -263,7 +213,7 @@ void Variable::set(Value new_value, Mark mark) {
     for (Clause* cl: (value == Value::t) ? pos_occ : neg_occ) {
         if (cl->sat_var == nullptr) {
             cl->sat_var = this;
-            if (heu == Heuristic::jw3) {
+            if (heu == Heuristic::jw) {
                 for (int lit: cl->lits) {
                     Variable* var = &variables[abs(lit)];
                     if (var->value == Value::unset) { 
@@ -292,7 +242,7 @@ void Variable::set(Value new_value, Mark mark) {
                         assert(active_pos_occ >= 0 && active_neg_occ >= 0);
 
                         // Decrement the number of clauses of length cl->active, because the clause is satisfied. Delete the pair from the map if the literal does not appear in clauses of this length anymore.
-                        if (heu == Heuristic::mom || heu == Heuristic::boehm || heu == Heuristic::jw1) {
+                        if (heu == Heuristic::mom || heu == Heuristic::boehm) {
                             map<int,int>& m = lit > 0 ? var->pos_by_cl_len : var->neg_by_cl_len;
                             auto search = m.find(cl->active);
                             if (search->second != 1) { search->second -= 1; }
@@ -309,11 +259,11 @@ void Variable::set(Value new_value, Mark mark) {
     for (Clause* cl: (value == Value::t) ? neg_occ : pos_occ) {
         if (cl->sat_var == nullptr) {
             cl->active -= 1;
-            if (heu == Heuristic::mom || heu == Heuristic::boehm || heu == Heuristic::jw1 || heu == Heuristic::jw3) {
+            if (heu == Heuristic::mom || heu == Heuristic::boehm || heu == Heuristic::jw) {
                 for (int lit: cl->lits) {
                     Variable* var = &variables[abs(lit)];
                     if (var->value == Value::unset) {
-                        if (heu == Heuristic::jw3) {
+                        if (heu == Heuristic::jw) {
                             (lit > 0 ? var->jw_pos : var->jw_neg) += pow(2, -(cl->active+1));
                         } else {
                         // The variable var is now in a clause with one fewer active literals, update the counts accordingly.  
@@ -342,7 +292,7 @@ void Variable::unset() {
     for (Clause* cl: (value == Value::t) ? pos_occ : neg_occ) {
         if (cl->sat_var == this) {
             cl->sat_var = nullptr;
-            if (heu == Heuristic::jw3) {
+            if (heu == Heuristic::jw) {
                 for (int lit: cl->lits) {
                     Variable* var = &variables[abs(lit)];
                     if (var->value == Value::unset) {
@@ -358,7 +308,7 @@ void Variable::unset() {
                         // The variable's number of occurrences increases by one, because the variable that satistifed the clause is unset, therefore the clause is active again.
                         (lit > 0 ? var->active_pos_occ : var->active_neg_occ) += 1;
 
-                        if (heu == Heuristic::mom || heu == Heuristic::boehm || heu == Heuristic::jw1) {
+                        if (heu == Heuristic::mom || heu == Heuristic::boehm) {
                             (lit > 0 ? var->pos_by_cl_len : var->neg_by_cl_len)[cl->active] += 1;
                             assert(is_wellformed(var));
                         }
@@ -373,11 +323,11 @@ void Variable::unset() {
     for (Clause* cl: (value == Value::t) ? neg_occ : pos_occ) {
         if (cl->sat_var == nullptr) {
             cl->active += 1;
-            if (heu == Heuristic::mom || heu == Heuristic::boehm || heu == Heuristic::jw1 || heu == Heuristic::jw3) {
+            if (heu == Heuristic::mom || heu == Heuristic::boehm || heu == Heuristic::jw) {
                 for (int lit: cl->lits) {
                     Variable* var = &variables[abs(lit)];
                     if (var->value == Value::unset) {
-                        if (heu == Heuristic::jw3) {
+                        if (heu == Heuristic::jw) {
                             (lit > 0 ? var->jw_pos : var->jw_neg) -= pow(2, -cl->active);
                         } else {
                             // The variable var is now in a clause with one more active literal, update the counts accordingly.                    
@@ -494,7 +444,7 @@ void unit_prop() {
 }
 
 //pure literals and subsumption
-void pure_Lit(){
+void pure_lit(){
     if (use_pure_lit) {
         for (Variable* var: pure_lits){
             if (var->value == Value::unset){
@@ -504,10 +454,6 @@ void pure_Lit(){
         }
         pure_lits.clear();
     }
-}
-
-void subs(){
-
 }
 
 // Backtracking
@@ -529,17 +475,13 @@ void backtrack() {
             return;
         }
     }
-    cout << "s Unsatisfiable\n";
+    cout << "s UNSATISFIABLE\n";
     exit(0);
 }
 
 int main(int argc, const char* argv[]) {
     string filename;
-    if (argc <= 1){
-        cout<< "Please give at least the path to a cnf file \n";
-        cout<< "and select one heuristics optionally with [-slis, -slcs, -dlis, -dlcs, -sc, -mom, -boehm]"<<endl;
-        exit(0);
-    } 
+     
     for (int i = 1; i < argc; ++i) {
         string option = string(argv[i]);
         
@@ -551,13 +493,11 @@ int main(int argc, const char* argv[]) {
             else if (option == "-bc") { heu = Heuristic::backtrack_count; }
             else if (option == "-mom") { heu = Heuristic::mom; }
             else if (option == "-boehm") { heu = Heuristic::boehm; }
-            else if (option == "-jw1") { heu = Heuristic::jw1; }
-            else if (option == "-jw2") { heu = Heuristic::jw2; }
-            else if (option == "-jw3") { heu = Heuristic::jw3; }
+            else if (option == "-jw") { heu = Heuristic::jw; }
             else if (option == "-p") { use_pure_lit = true; }
             else if (option == "-v") { verbose = true; }
             else {
-                cout << "Unknown argument.\nPossible options:\n";
+                cout << "Unknown argument: " << option << "\nPossible options:\n";
                 cout << "-slis\tuse the S(tatic)LIS heuristic\n";
                 cout << "-slcs\tuse the S(tatic)LCS heuristic\n";
                 cout << "-dlis\tuse the DLIS heuristic\n";
@@ -565,23 +505,28 @@ int main(int argc, const char* argv[]) {
                 cout << "-bc\tbacktrack count: a heuristic based on how many times a variable has been backtracked\n";
                 cout << "-mom\tuse the MOM heuristic\n";
                 cout << "-boehm\tuse Boehm's heuristic\n";
-                cout << "-jw1\tuse the Jeroslaw-Wang heuristic\n";
-                cout << "-jw2\tuse the Jeroslaw-Wang heuristic\n";
-                cout << "-jw3\tuse the Jeroslaw-Wang heuristic\n";
+                cout << "-jw\tuse the Jeroslow-Wang heuristic\n";
                 cout << "-p\tenable pure literal elimination\n";
                 cout << "-v\tverbose mode for debugging\n";
                 exit(1);
             }
         } else { filename = option; }
     }
-    if (heu == Heuristic::dlis || heu == Heuristic::dlcs || heu == Heuristic::mom || heu == Heuristic::boehm || heu == Heuristic::jw1 || heu == Heuristic::jw2 || use_pure_lit) { update_active_occ = true; }
+
+    if (filename == "") {
+        cout << "No filename specified\n";
+        cout << "usage: dpll_solver <path to a cnf file> [-p] [heuristics]\n";
+        exit(1);
+    }
+
+    if (heu == Heuristic::dlis || heu == Heuristic::dlcs || heu == Heuristic::mom || heu == Heuristic::boehm || use_pure_lit) { update_active_occ = true; }
 
     fromFile(filename);
     // Fill the unassigned_vars heap. Originally all variables are unassigned.
     for (int i = 1; i < variables.size(); ++i) { unassigned_vars.insert(&variables[i]); }
     // There could be unit clauses in the original formula. If unit-propagation solves the while formula, the following while-loop will not be executed.
     unit_prop();
-    pure_Lit();
+    pure_lit();
 
     while (variables.size()-1 != assignments.size()) {
         // Always pick the variable of highest priority to branch on.
@@ -599,9 +544,9 @@ int main(int argc, const char* argv[]) {
         }
         picked_var->set(pick_polarity(picked_var), Mark::branching);
         unit_prop();
-        pure_Lit();
+        pure_lit();
     }
-    cout << "s Satisfiable\n";
+    cout << "s SATISFIABLE\n";
     cout << "v ";
     for (int i = 1; i < variables.size(); ++i) {
         cout << ((variables[i].value == Value::t) ? i : -i) << " ";

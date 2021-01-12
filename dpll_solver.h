@@ -11,6 +11,7 @@
 #include <map>
 #include <cmath> 
 #include <limits>
+#include <cstdlib>
 
 using namespace std;
 
@@ -35,7 +36,6 @@ enum class Mark {
 };
 
 struct Variable {
-    //int var;
     Value value = Value::unset;
     vector<Clause*> pos_occ;
     vector<Clause*> neg_occ;
@@ -49,11 +49,10 @@ struct Variable {
     int backtrack_count = 0;  // for the backtrack_count heuristic
     void set(Value, Mark);
     void unset();
-    //Variable(int var) : var{var}{}
 };
 
 enum class Heuristic {
-    none, slis, slcs, dlis, dlcs, backtrack_count, mom, boehm, jw1, jw2, jw3
+    none, slis, slcs, dlis, dlcs, backtrack_count, mom, boehm, jw
 };
 
 bool greater_than(Variable*, Variable*);
@@ -77,14 +76,8 @@ struct Heap {  // a max-heap
     void move_down(Variable*);
 };
 
-void pure_Lit();
-
-void subs();
+void pure_lit();
 
 void backtrack();
-
-double jeroslow_wang1(const map<int,int>& m);
-
-double jeroslow_wang2(Variable* v, bool b);
 
 #endif
