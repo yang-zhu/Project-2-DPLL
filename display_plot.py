@@ -23,6 +23,6 @@ for conf in stats:
 
 fig, axs = plt.subplots(ncols=1)
 fig.canvas.set_window_title('Evaluation')
-sns.lineplot(x='Instances', y='Time', hue='Configuration', data=stats_dict, markers=['o']*len(stats), style="Configuration", dashes=False)
+sns.lineplot(x='Instances', y='Time', hue='Configuration', data=stats_dict, markers=(['o', '<', '>', '^', 'v', 's', 'd']*len(stats))[:len(stats)], style="Configuration", dashes=False, palette='bright')
 axs.set(xlabel = 'number of solved instances', ylabel = 'CPU time (s)')
 plt.show()
