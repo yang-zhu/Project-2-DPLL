@@ -19,6 +19,7 @@
     ./dpll_solver <path to a cnf file> [-p] [heuristics]
     ```
     -p enables pure literal elimination
+    
     The heutistics options are: -slis, -slcs, -dlis, -dlcs, -bc, -mom, -boehm, -jw
 
 
@@ -39,3 +40,8 @@
     ```
 
     We have included `Evaluation.png` in the folder. It shows the performance of our eighteen configurations on the sat and unsat benchmarks.
+
+
+---
+
+Group: Xiao Chen, Yize Sun, Zhu Yang
