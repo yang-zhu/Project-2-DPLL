@@ -9,7 +9,7 @@ vector<Variable*> pure_lits;
 Heap unassigned_vars;
 Heuristic heu = Heuristic::none;  // The default setting is without any heuristics.
 bool update_active_occ = false;  // only update active occurrences when needed
-bool verbose = false;
+
 
 // Append a variable to the heap and re-sort the heap.
 void Heap::insert(Variable* var) {
@@ -204,9 +204,6 @@ bool is_wellformed(Variable* v) {
 
 // Assign truth value to a variable.
 void Variable::set(Value new_value, Mark mark) {
-    if (verbose) {
-        cout << "set #" << (this - &variables[0]) << " to " << (new_value == Value::t) << "\n";
-    }
     assignments.push_back(make_pair(this, mark));
     value = new_value;
     unassigned_vars.remove(this);
@@ -291,7 +288,6 @@ void Variable::set(Value new_value, Mark mark) {
 
 // Unassign truth value of a variable.
 void Variable::unset() {
-    if (verbose) cout << "unset #" << (this - &variables[0]) <<  "\n";
     for (Clause* cl: (value == Value::t) ? pos_occ : neg_occ) {
         if (cl->sat_var == this) {
             cl->sat_var = nullptr;
@@ -500,7 +496,6 @@ int main(int argc, const char* argv[]) {
             else if (option == "-boehm") { heu = Heuristic::boehm; }
             else if (option == "-jw") { heu = Heuristic::jw; }
             else if (option == "-p") { use_pure_lit = true; }
-            else if (option == "-v") { verbose = true; }
             else {
                 cout << "Unknown argument: " << option << "\nPossible options:\n";
                 cout << "-slis\tuse the S(tatic)LIS heuristic\n";
@@ -536,17 +531,6 @@ int main(int argc, const char* argv[]) {
     while (variables.size()-1 != assignments.size()) {
         // Always pick the variable of highest priority to branch on.
         Variable* picked_var = unassigned_vars.heap[1];
-        if (verbose) {
-            cout << "branching on #" << (picked_var - &*variables.begin()) << " pos_occ: ";
-            for (pair<int,int> p : picked_var->pos_by_cl_len) {
-                cout << p.first << ":" << p.second << " ";
-            }
-            cout << " neg_occ: ";
-            for (pair<int,int> p : picked_var->neg_by_cl_len) {
-                cout << p.first << ":" << p.second << " ";
-            }
-            cout << "\n";
-        }
         picked_var->set(pick_polarity(picked_var), Mark::branching);
         unit_prop();
         pure_lit();

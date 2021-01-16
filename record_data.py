@@ -1,9 +1,9 @@
 import os
 import subprocess
-import sys
 from collections import defaultdict
 import time
 import json
+import argparse
 
 # Store the solving time of every configuration in stats_dict.
 def record_data(configs, files, solver, timeout):  
@@ -46,14 +46,17 @@ if __name__ == '__main__':
     'Jeroslow-Wang':['-jw'],
     'Jeroslow-Wang + purelit':['-jw', '-p']
     }
-    solver = sys.argv[1]    
-    timeout = int(sys.argv[2])
-    write_to = sys.argv[3]
-    files = sys.argv[4:]
 
-    # Only create a new file when the given file does not exist in the current directory yet.
-    if not os.path.isfile(write_to): 
-        with open(write_to, 'w') as f:
-            f.write(json.dumps(record_data(configs, files, solver, timeout)))
+    parser = argparse.ArgumentParser(description="Records solver runtime.")
+    parser.add_argument('solver', help='path to DPLL solver')
+    parser.add_argument('timeout', help='timeout for each formula', type=int)
+    parser.add_argument('write_to', help='the file to write results to')
+    parser.add_argument('benchmarks', help='benchmarks to be tested', nargs='+')
+    args = parser.parse_args()
+
+    # Only create a new file when the given file does not exist yet.
+    if not os.path.isfile(args.write_to): 
+        with open(args.write_to, 'w') as f:
+            f.write(json.dumps(record_data(configs, args.benchmarks, args.solver, args.timeout)))
     else:
-        print(write_to, "already exists.")
+        print(args.write_to, "already exists.")
