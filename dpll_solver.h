@@ -44,8 +44,8 @@ struct Variable {
     int heap_position = 0;  // A variable's position in the heap, which is used to update the heap.
     map<int,int> pos_by_cl_len;  // the occurrences of a positive literal in active clauses, sorted by clause length
     map<int,int> neg_by_cl_len;  // the occurrences of a negative literal in active clauses, sorted by clause length
-    double jw_pos = 0;
-    double jw_neg = 0;
+    double jw_pos = 0;  // Jeroslow-Wang heuristic score for positive literal
+    double jw_neg = 0;  // Jeroslow-Wang heuristic score for negative literal
     int backtrack_count = 0;  // for the backtrack_count heuristic
     void set(Value, Mark);
     void unset();

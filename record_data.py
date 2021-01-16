@@ -5,9 +5,11 @@ from collections import defaultdict
 import time
 import json
 
+# Store the solving time of every configuration in stats_dict.
 def record_data(configs, files, solver, timeout):  
     stats_dict = defaultdict(list)
     for conf in configs:
+        # Print the current progress on the console.
         print("\n"+conf)
         print("==============")
         for i, f in enumerate(files):
@@ -49,6 +51,7 @@ if __name__ == '__main__':
     write_to = sys.argv[3]
     files = sys.argv[4:]
 
+    # Only create a new file when the given file does not exist in the current directory yet.
     if not os.path.isfile(write_to): 
         with open(write_to, 'w') as f:
             f.write(json.dumps(record_data(configs, files, solver, timeout)))

@@ -8,7 +8,7 @@ bool use_pure_lit = false;
 vector<Variable*> pure_lits;
 Heap unassigned_vars;
 Heuristic heu = Heuristic::none;  // The default setting is without any heuristics.
-bool update_active_occ = false;
+bool update_active_occ = false;  // only update active occurrences when needed
 bool verbose = false;
 
 // Append a variable to the heap and re-sort the heap.
@@ -166,9 +166,10 @@ bool greater_than(Variable* v1, Variable* v2) {
             }
         }
         case Heuristic::jw:
+            // Compare literals according to their Jeroslow-Wang heuristic scores
             return max(v1->jw_pos, v1->jw_neg) > max(v2->jw_pos, v2->jw_neg);
         case Heuristic::none:
-            // Compare variables according to their pointer values, which correponds to the numeric value of the variables in the input file.
+            // Pick a variable randomly
             return rand() % 2 == 0;
     }
 }
@@ -214,6 +215,7 @@ void Variable::set(Value new_value, Mark mark) {
         if (cl->sat_var == nullptr) {
             cl->sat_var = this;
             if (heu == Heuristic::jw) {
+                // Since the clause is now satisfied, the occurrences of all the unassigned literals in the clause should no longer be counted towards the Jeroslow-Wang heuristic score. 
                 for (int lit: cl->lits) {
                     Variable* var = &variables[abs(lit)];
                     if (var->value == Value::unset) { 
@@ -264,6 +266,7 @@ void Variable::set(Value new_value, Mark mark) {
                     Variable* var = &variables[abs(lit)];
                     if (var->value == Value::unset) {
                         if (heu == Heuristic::jw) {
+                            // The literal now occurs in a shorter clause, therefore add the difference to the Jeroslow-Wang heuristic score.
                             (lit > 0 ? var->jw_pos : var->jw_neg) += pow(2, -(cl->active+1));
                         } else {
                         // The variable var is now in a clause with one fewer active literals, update the counts accordingly.  
@@ -293,6 +296,7 @@ void Variable::unset() {
         if (cl->sat_var == this) {
             cl->sat_var = nullptr;
             if (heu == Heuristic::jw) {
+                // Since the clause is now reactivated, the occurrences of all the unassigned literals in the clause should again be counted towards the Jeroslow-Wang heuristic score. 
                 for (int lit: cl->lits) {
                     Variable* var = &variables[abs(lit)];
                     if (var->value == Value::unset) {
@@ -328,6 +332,7 @@ void Variable::unset() {
                     Variable* var = &variables[abs(lit)];
                     if (var->value == Value::unset) {
                         if (heu == Heuristic::jw) {
+                            // The literal now occurs in a longer clause, therefore subtract the difference from the Jeroslow-Wang heuristic score.
                             (lit > 0 ? var->jw_pos : var->jw_neg) -= pow(2, -cl->active);
                         } else {
                             // The variable var is now in a clause with one more active literal, update the counts accordingly.                    
@@ -443,7 +448,7 @@ void unit_prop() {
     }
 }
 
-//pure literals and subsumption
+// Pure literal elimination
 void pure_lit(){
     if (use_pure_lit) {
         for (Variable* var: pure_lits){
@@ -512,7 +517,7 @@ int main(int argc, const char* argv[]) {
             }
         } else { filename = option; }
     }
-
+    // When no file name is given.
     if (filename == "") {
         cout << "No filename specified\n";
         cout << "usage: dpll_solver <path to a cnf file> [-p] [heuristics]\n";
@@ -524,7 +529,7 @@ int main(int argc, const char* argv[]) {
     fromFile(filename);
     // Fill the unassigned_vars heap. Originally all variables are unassigned.
     for (int i = 1; i < variables.size(); ++i) { unassigned_vars.insert(&variables[i]); }
-    // There could be unit clauses in the original formula. If unit-propagation solves the while formula, the following while-loop will not be executed.
+    // There could be unit clauses in the original formula. If unit-propagation and pure literal elimination solve the whole formula, the following while-loop will not be executed.
     unit_prop();
     pure_lit();
 
