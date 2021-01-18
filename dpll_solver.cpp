@@ -7,6 +7,7 @@ vector<Clause*> unit_clauses;
 bool use_pure_lit = false;
 vector<Variable*> pure_lits;
 Heap unassigned_vars;
+int counter = 0;
 Heuristic heu = Heuristic::none;  // The default setting is without any heuristics.
 bool update_active_occ = false;  // only update active occurrences when needed
 
@@ -119,8 +120,8 @@ bool greater_than(Variable* v1, Variable* v2) {
         }
         case Heuristic::boehm: {
             // Compare variables according to their boehm-heuristic scores lexicographically.
-            const int alpha = 100;
-            const int beta = 50;
+            const int alpha = 1;
+            const int beta = 2;
 
             // Among all the active clauses that contain at least one of v1 and v2, find the length of the shortest clause. Increase the length until the boehm-heuristic scores of v1 and v2 are different.
             auto v1_pos = v1->pos_by_cl_len.begin();
@@ -283,7 +284,17 @@ void Variable::set(Value new_value, Mark mark) {
             else if (cl->active == 0) { found_conflict = true; }
         }
     }
-    if (found_conflict) {backtrack();}
+    if (found_conflict) {
+        if (counter < 200) {
+            counter++;
+        } else {
+            counter = 0;
+            for (Variable& var: variables) {
+                var.backtrack_count /= 2;
+            }
+        }
+        backtrack();
+    }
 }
 
 // Unassign truth value of a variable.
