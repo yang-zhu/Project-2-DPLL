@@ -25,7 +25,8 @@ for conf in stats_combined:
 # Display the cactus plot.
 fig, axs = plt.subplots(ncols=1)
 fig.canvas.set_window_title('Evaluation')
-markers = (['o', '<', '>', '^', 'v', 's', 'd']*len(stats_combined))[:len(stats_combined)]
-sns.lineplot(x='Instances', y='Time', hue='Configuration', data=stats_dict, markers=markers, style="Configuration", dashes=False, palette='bright')
+markers = (['o', 'v']*len(stats_combined))[:len(stats_combined)]
+colors = [color for color in sns.color_palette('bright') for _ in range(2)][:len(stats_combined)]
+sns.lineplot(x='Instances', y='Time', hue='Configuration', data=stats_dict, markers=markers, style="Configuration", dashes=False, palette=colors)
 axs.set(xlabel = 'number of solved instances', ylabel = 'CPU time (s)')
 plt.show()
