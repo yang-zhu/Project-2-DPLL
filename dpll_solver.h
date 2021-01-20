@@ -58,7 +58,7 @@ enum class Heuristic {
 bool greater_than(Variable*, Variable*);
 
 struct Heap {  // a max-heap
-    vector<Variable*> heap{nullptr};
+    vector<Variable*> heap{nullptr}; // Add a dummy element to simplify index computation.
 
     static int parent_ind(int ind) { return ind/2; }  // Return the index of the parent node of a node.
     static int l_child_ind(int ind) { return ind*2; }  // Return the index of the left child of a node.
@@ -74,6 +74,7 @@ struct Heap {  // a max-heap
     void remove(Variable*);
     void move_up(Variable*);
     void move_down(Variable*);
+    Variable* max();
 };
 
 void pure_lit();

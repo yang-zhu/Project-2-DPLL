@@ -47,14 +47,19 @@ void Heap::move_down(Variable* var) {
     int var_ind = var->heap_position;
     while (true) {
         int max_child_ind = this->max_child_ind(var_ind);
-        if (var_ind == max_child_ind || greater_than(heap[var_ind], heap[max_child_ind])) { break; }
-        else {
+        if (var_ind == max_child_ind || !greater_than(heap[max_child_ind], heap[var_ind])) { 
+            break;
+        } else {
             swap(heap[var_ind], heap[max_child_ind]);
             heap[var_ind]->heap_position = var_ind;
             var_ind = max_child_ind;
         }
     }
     heap[var_ind]->heap_position = var_ind;
+}
+
+Variable* Heap::max() {
+    return this->heap[1];
 }
 
 // Return the number of occurrences (search->second) if the clause length (key of m) is found, otherwise return 0.
@@ -66,8 +71,8 @@ int get_or_default(const map<int,int>& m, int l) {
 
 // Compute the mom-heuristic score for variable v.
 double mom_helper(Variable* v, int len, int alpha) {
-    int pos_cl_count = get_or_default(v->pos_by_cl_len, len);
-    int neg_cl_count = get_or_default(v->neg_by_cl_len, len);
+    double pos_cl_count = get_or_default(v->pos_by_cl_len, len);
+    double neg_cl_count = get_or_default(v->neg_by_cl_len, len);
     return (pos_cl_count + neg_cl_count) * pow(2, alpha) + pos_cl_count * neg_cl_count;
 }
 
@@ -195,7 +200,7 @@ Value pick_polarity(Variable* v) {
 }
 
 // For assertion: Check if the number of occurrences in pos_by_cl_len and pos_by_cl_len are correct.
-bool is_wellformed(Variable* v) {
+bool is_consistent(Variable* v) {
     int pos_sum = 0;
     int neg_sum = 0;
     for (pair<int,int> p: v->pos_by_cl_len) { pos_sum += p.second; }
@@ -230,16 +235,16 @@ void Variable::set(Value new_value, Mark mark) {
                         // Every variable will be appended to pure_lits at most twice.
                         if (lit > 0) {
                             var->active_pos_occ -= 1;
-                            if (use_pure_lit) {
-                                if (var->active_pos_occ == 0) { pure_lits.push_back(var); }
+                            if (use_pure_lit && var->active_pos_occ == 0) {
+                                pure_lits.push_back(var);
                             }
                         } else {
                             var->active_neg_occ -= 1;
-                            if (use_pure_lit) {
-                                if (var->active_neg_occ == 0) { pure_lits.push_back(var); }
+                            if (use_pure_lit && var->active_neg_occ == 0) {
+                                pure_lits.push_back(var);
                             }
                         }
-                        assert(active_pos_occ >= 0 && active_neg_occ >= 0);
+                        assert(var->active_pos_occ >= 0 && var->active_neg_occ >= 0);
 
                         // Decrement the number of clauses of length cl->active, because the clause is satisfied. Delete the pair from the map if the literal does not appear in clauses of this length anymore.
                         if (heu == Heuristic::mom || heu == Heuristic::boehm) {
@@ -247,7 +252,7 @@ void Variable::set(Value new_value, Mark mark) {
                             auto search = m.find(cl->active);
                             if (search->second != 1) { search->second -= 1; }
                             else { m.erase(search); }
-                            assert(is_wellformed(var));
+                            assert(is_consistent(var));
                         }
                         // Since the variable's number of occurrences decreased, the priority can only decrease.
                         unassigned_vars.move_down(var);
@@ -267,16 +272,16 @@ void Variable::set(Value new_value, Mark mark) {
                             // The literal now occurs in a shorter clause, therefore add the difference to the Jeroslow-Wang heuristic score.
                             (lit > 0 ? var->jw_pos : var->jw_neg) += pow(2, -(cl->active+1));
                         } else {
-                        // The variable var is now in a clause with one fewer active literals, update the counts accordingly.  
+                        // The variable var is now in a clause with one fewer active literal, update the counts accordingly.  
                         map<int,int>& m = lit > 0 ? var->pos_by_cl_len : var->neg_by_cl_len;
                         auto search = m.find(cl->active+1);
                         if (search->second != 1) { search->second -= 1; }
                         else { m.erase(search); }
                         m[cl->active] += 1;
                         }
-                        // The number of clauses with fewer variables increase. Since our heuristics favor clauses of shorter length, the priority of the variable increases.
+                        // The clause that the variable appears in becomes shorter. Since our heuristics favor clauses of shorter length, the priority of the variable may increase.
                         unassigned_vars.move_up(var);
-                        assert(is_wellformed(var));
+                        assert(is_consistent(var));
                     }
                 }
             }
@@ -285,12 +290,14 @@ void Variable::set(Value new_value, Mark mark) {
         }
     }
     if (found_conflict) {
-        if (counter < 200) {
-            counter++;
-        } else {
-            counter = 0;
-            for (Variable& var: variables) {
-                var.backtrack_count /= 2;
+        if (heu == Heuristic::backtrack_count) {
+            if (counter < 200) {
+                counter++;
+            } else {
+                counter = 0;
+                for (Variable& var: variables) {
+                    var.backtrack_count /= 2;
+                }
             }
         }
         backtrack();
@@ -321,7 +328,7 @@ void Variable::unset() {
 
                         if (heu == Heuristic::mom || heu == Heuristic::boehm) {
                             (lit > 0 ? var->pos_by_cl_len : var->neg_by_cl_len)[cl->active] += 1;
-                            assert(is_wellformed(var));
+                            assert(is_consistent(var));
                         }
 
                         // Since the variable's number of occurrences increased, the priority can only increase.
@@ -349,9 +356,9 @@ void Variable::unset() {
                             else { m.erase(search); }
                             m[cl->active] += 1;
                         }
-                        // The number of clauses with more variables increase. Since our heuristics favor clauses of shorter length, the priority of the variable decreases.
+                        // The clause that the variables appears in becomes longer. Since our heuristics favor clauses of shorter length, the priority of the variable may decrease.
                         unassigned_vars.move_down(var);
-                        assert(is_wellformed(var));
+                        assert(is_consistent(var));
                     }
                 }
             }
@@ -374,7 +381,10 @@ void fromFile(string path) {
     }
 
     // Read the line that starts with "p" and get the number of variables as well as the number of clauses.
-    if (s == "p") {
+    if (s != "p") {
+        cout << "The format of the file is wrong.\n";
+        exit(1);
+    } else {
         string cnf;
         int num_vars;
         int num_clauses;
@@ -410,6 +420,10 @@ void fromFile(string path) {
             clauses.push_back(Clause(lits, lits.size()));
 
             Clause* cl = &clauses.back();
+            if (cl->active == 0) {
+                cout << "s UNSATISFIABLE\n";
+                exit(0);
+            }
             if (cl->active == 1) { unit_clauses.push_back(cl); }
 
             for (int lit: lits) {
@@ -530,18 +544,22 @@ int main(int argc, const char* argv[]) {
         exit(1);
     }
 
-    if (heu == Heuristic::dlis || heu == Heuristic::dlcs || heu == Heuristic::mom || heu == Heuristic::boehm || use_pure_lit) { update_active_occ = true; }
+    if (heu == Heuristic::dlis || heu == Heuristic::dlcs || heu == Heuristic::mom || heu == Heuristic::boehm || use_pure_lit) {
+        update_active_occ = true;
+    }
 
     fromFile(filename);
     // Fill the unassigned_vars heap. Originally all variables are unassigned.
-    for (int i = 1; i < variables.size(); ++i) { unassigned_vars.insert(&variables[i]); }
+    for (int i = 1; i < variables.size(); ++i) {
+        unassigned_vars.insert(&variables[i]);
+    }
     // There could be unit clauses in the original formula. If unit-propagation and pure literal elimination solve the whole formula, the following while-loop will not be executed.
     unit_prop();
     pure_lit();
 
     while (variables.size()-1 != assignments.size()) {
         // Always pick the variable of highest priority to branch on.
-        Variable* picked_var = unassigned_vars.heap[1];
+        Variable* picked_var = unassigned_vars.max();
         picked_var->set(pick_polarity(picked_var), Mark::branching);
         unit_prop();
         pure_lit();
