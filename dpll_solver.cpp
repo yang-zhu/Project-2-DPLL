@@ -532,7 +532,6 @@ int main(int argc, const char* argv[]) {
                 cout << "-boehm\tuse Boehm's heuristic\n";
                 cout << "-jw\tuse the Jeroslow-Wang heuristic\n";
                 cout << "-p\tenable pure literal elimination\n";
-                cout << "-v\tverbose mode for debugging\n";
                 exit(1);
             }
         } else { filename = option; }
